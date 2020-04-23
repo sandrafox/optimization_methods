@@ -11,10 +11,10 @@ def newton(f, f_grad, f_hess, start_arg, stop_criterion, eps=1e-5, max_iters=100
         cur_grad = f_grad(cur_arg)
         cur_hess = f_hess(cur_arg)
         if cho:
-            cur_delta = cho_solve(cho_factor(cur_hess), cur_grad * (-1))
+            hess_inv = cho_solve(cho_factor(cur_hess), numpy.eye(cur_hess.shape[0]))
         else:
             hess_inv = numpy.linalg.inv(cur_hess)
-            cur_delta = numpy.matmul(cur_grad, hess_inv)
+        cur_delta = numpy.matmul(cur_grad, hess_inv)
         next_arg = cur_arg - cur_delta
         next_value = f(next_arg)
         trace.append(next_arg)

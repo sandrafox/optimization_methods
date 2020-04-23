@@ -1,8 +1,12 @@
+import matplotlib
 import numpy as np
-from gradient_descent import gradient_descent, backtracking
+import sklearn.model_selection
+
+from gradient_descent import gradient_descent, backtracking, save
 from newton_method import newton
-from one_dimesional_search import golden_ratio_method
 from scipy.special import expit
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class NumberOfSteps:
@@ -56,7 +60,7 @@ class Logistic_regression:
             return hess + self.alpha * np.eye(features_count + 1)
 
         if self.solver == 'gradient':
-            trace = gradient_descent(Q, Q_grad, start_w, backtracking(Q, Q_grad), 'grad', eps=eps)
+            trace = gradient_descent(Q, Q_grad, start_w, backtracking, 'grad', eps=eps)
             self.w = trace[-1]
             return NumberOfSteps(0, len(trace))
         else:
@@ -77,3 +81,90 @@ class Logistic_regression:
     def predict(self, X):
         X_r = Logistic_regression.__add_features(X)
         return np.sign(np.matmul(X_r, self.w)).astype(int)
+
+
+def read_dataset(path):
+    data = pd.read_csv(path)
+    X = data.iloc[:,:-1].values
+    y = data.iloc[:, -1].apply(lambda c: 1 if c == 'P' else -1).values
+    return X, y
+
+
+def calc_f_score(X, y, alpha, solver):
+    n_splits = 5
+    cv = sklearn.model_selection.KFold(n_splits=n_splits, shuffle=True)
+    mean_f_score = 0.0
+    for train_indexes, test_indexes in cv.split(X):
+        X_train = X[train_indexes]
+        X_test = X[test_indexes]
+        y_train = y[train_indexes]
+        y_test = y[test_indexes]
+
+        classifier = Logistic_regression(alpha, solver)
+        classifier.fit(X_train, y_train)
+        y_pred = classifier.predict(X_test)
+
+        tp = np.sum((y_pred == 1) & (y_test == 1))
+        fp = np.sum((y_pred == 1) & (y_test != 1))
+        fn = np.sum((y_pred != 1) & (y_test == 1))
+
+        if tp != 0:
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+            f_score = 2 * precision * recall / (precision + recall)
+            mean_f_score += f_score
+    return mean_f_score / n_splits
+
+
+def get_best_param(X, y, solver):
+    best_alpha = None
+    max_f_score = -1
+    for alpha in [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.]:
+        cur_f_score = calc_f_score(X, y, alpha, solver)
+        print('alpha =', alpha, 'f-score =', cur_f_score)
+        if cur_f_score > max_f_score:
+            max_f_score = cur_f_score
+            best_alpha = alpha
+    return best_alpha, max_f_score
+
+
+def draw(clf, X, ans, step_x, step_y, name):
+    x_min, y_min = np.amin(X, axis=0)
+    x_max, y_max = np.amax(X, axis=0)
+    x_min -= step_x
+    x_max += step_x
+    y_min -= step_y
+    y_max += step_y
+
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, step_x), np.arange(y_min, y_max, step_y))
+
+    zz = clf.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+
+    plt.figure(figsize=(12, 12))
+    plt.xlim(x_min, x_max)
+    plt.ylim(y_min, y_max)
+
+    x0, y0 = X[ans != 1].T
+    x1, y1 = X[ans == 1].T
+
+    plt.pcolormesh(xx, yy, zz, cmap=matplotlib.colors.ListedColormap(['#FFAAAA', '#AAAAFF']))
+    plt.scatter(x0, y0, color='red', s=100)
+    plt.scatter(x1, y1, color='blue', s=100)
+    plt.xlabel('x')
+    plt.ylabel('y')
+    save(name, "png")
+    plt.show()
+
+
+def process_with_solver(X, y, solver, step_x, step_y):
+    best_alpha, max_f_score = get_best_param(X, y, solver)
+    print('Best params:', best_alpha, max_f_score)
+    best_classifier = Logistic_regression(best_alpha, solver)
+    number_of_steps = best_classifier.fit(X, y)
+    if solver == 'newton':
+        print('errors =', number_of_steps.errors, 'steps =', number_of_steps.steps)
+    else:
+        print('steps =', number_of_steps.steps)
+    draw(best_classifier, X, y, step_x, step_y, 'classification_' + solver)
+
+
